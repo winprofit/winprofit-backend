@@ -14,6 +14,7 @@ app.use('/api/entries',  require('./routes/entries'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/pl',       require('./routes/pl'));
 app.use('/api/insights', require('./routes/insights'));
+app.use('/api/inventory', require('./routes/inventory'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok', app: 'WinProfit API' }));
 
