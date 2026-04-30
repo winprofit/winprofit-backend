@@ -17,7 +17,7 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 router.post('/', authMiddleware, async (req, res) => {
-  const { date, category, amount, description } = req.body;
+  const { date, category, subcategory, amount, description } = req.body;
   if (!date || !category || !amount) {
     return res.status(400).json({ error: 'date, category and amount are required' });
   }
@@ -27,6 +27,7 @@ router.post('/', authMiddleware, async (req, res) => {
       restaurant_id: req.restaurant.id,
       date,
       category,
+      subcategory: subcategory || null,
       amount:      Math.round(amount * 100),
       description: description || null,
     })
