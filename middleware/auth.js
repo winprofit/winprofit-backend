@@ -7,7 +7,7 @@ const supabase = createClient(
 
 async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing authorization header' });
   }
 
@@ -21,7 +21,7 @@ async function authMiddleware(req, res, next) {
   req.supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_ANON_KEY,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
+    { global: { headers: { Authorization: 'Bearer ' + token } } }
   );
   req.user = user;
 
