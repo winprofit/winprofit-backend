@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 
-// Admin auth middleware
 function adminAuth(req, res, next) {
   const password = req.headers['x-admin-password'];
   if (password !== process.env.ADMIN_PASSWORD) {
@@ -11,7 +10,6 @@ function adminAuth(req, res, next) {
   next();
 }
 
-// Create admin Supabase client with service role key
 function getAdminClient() {
   return createClient(
     process.env.SUPABASE_URL,
@@ -19,36 +17,31 @@ function getAdminClient() {
   );
 }
 
-// GET /api/admin/dashboard
 router.get('/dashboard', adminAuth, async (req, res) => {
   const supabase = getAdminClient();
 
-  // Get all restaurants
+  // Use month from query param or current month
+  const month = req.query.month || new Date().toISOString().slice(0, 7);
+  const [y, m] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const to = `${month}-${String(lastDay).padStart(2, '0')}`;
+
   const { data: restaurants } = await supabase
     .from('restaurants')
     .select('*')
     .order('created_at', { ascending: false });
 
-  // Get all subscriptions
   const { data: subscriptions } = await supabase
     .from('subscriptions')
     .select('*');
 
-  // Get all users from auth
   const { data: { users } } = await supabase.auth.admin.listUsers();
-
-  // Get current month P&L for each restaurant
-  const month = new Date().toISOString().slice(0, 7);
-  const from = `${month}-01`;
-  const to = new Date(month + '-01');
-  to.setMonth(to.getMonth() + 1);
-  to.setDate(0);
-  const toStr = to.toISOString().slice(0, 10);
 
   const restaurantData = await Promise.all(restaurants.map(async (restaurant) => {
     const [entriesRes, expensesRes] = await Promise.all([
-      supabase.from('daily_entries').select('*').eq('restaurant_id', restaurant.id).gte('date', from).lte('date', toStr),
-      supabase.from('expenses').select('*').eq('restaurant_id', restaurant.id).gte('date', from).lte('date', toStr),
+      supabase.from('daily_entries').select('*').eq('restaurant_id', restaurant.id).gte('date', from).lte('date', to),
+      supabase.from('expenses').select('*').eq('restaurant_id', restaurant.id).gte('date', from).lte('date', to),
     ]);
 
     const entries = entriesRes.data || [];
@@ -94,7 +87,6 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     };
   }));
 
-  // Calculate MRR
   const paidMonthly = subscriptions.filter(s => s.plan === 'monthly' && s.status === 'active').length;
   const paidYearly = subscriptions.filter(s => s.plan === 'yearly' && s.status === 'active').length;
   const trialUsers = subscriptions.filter(s => s.plan === 'trial' && s.status === 'active').length;
@@ -110,6 +102,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       mrr: parseFloat(mrr.toFixed(2)),
     },
     restaurants: restaurantData,
+    month,
   });
 });
 
