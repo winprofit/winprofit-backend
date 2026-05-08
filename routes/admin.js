@@ -19,8 +19,6 @@ function getAdminClient() {
 
 router.get('/dashboard', adminAuth, async (req, res) => {
   const supabase = getAdminClient();
-
-  // Use month from query param or current month
   const month = req.query.month || new Date().toISOString().slice(0, 7);
   const [y, m] = month.split('-').map(Number);
   const from = `${month}-01`;
@@ -46,14 +44,11 @@ router.get('/dashboard', adminAuth, async (req, res) => {
 
     const entries = entriesRes.data || [];
     const expenses = expensesRes.data || [];
-
     const foodSales = entries.reduce((s, e) => s + e.food_sales, 0);
     const bevSales = entries.reduce((s, e) => s + e.beverage_sales, 0);
     const totalRev = foodSales + bevSales;
-
     const byCat = {};
     expenses.forEach(e => { byCat[e.category] = (byCat[e.category] || 0) + e.amount; });
-
     const foodCost = byCat.food_cost || 0;
     const labor = byCat.labor || 0;
     const totalExp = Object.values(byCat).reduce((s, v) => s + v, 0);
@@ -61,17 +56,18 @@ router.get('/dashboard', adminAuth, async (req, res) => {
 
     const sub = subscriptions.find(s => s.restaurant_id === restaurant.id);
     const user = users.find(u => u.id === restaurant.user_id);
-
     const daysLeft = sub && sub.trial_ends_at
       ? Math.max(0, Math.ceil((new Date(sub.trial_ends_at) - new Date()) / (1000 * 60 * 60 * 24)))
       : null;
 
     return {
       id: restaurant.id,
+      user_id: restaurant.user_id,
       name: restaurant.name,
       email: user ? user.email : 'unknown',
       created_at: restaurant.created_at,
       subscription: sub ? {
+        id: sub.id,
         plan: sub.plan,
         status: sub.status,
         days_left: daysLeft,
@@ -104,6 +100,85 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     restaurants: restaurantData,
     month,
   });
+});
+
+// POST /api/admin/extend-trial
+router.post('/extend-trial', adminAuth, async (req, res) => {
+  const { subscription_id, days } = req.body;
+  if (!subscription_id || !days) return res.status(400).json({ error: 'subscription_id and days required' });
+
+  const supabase = getAdminClient();
+
+  // Get current subscription
+  const { data: sub } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('id', subscription_id)
+    .single();
+
+  if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+
+  // Calculate new trial end date
+  const base = sub.trial_ends_at && new Date(sub.trial_ends_at) > new Date()
+    ? new Date(sub.trial_ends_at)
+    : new Date();
+  base.setDate(base.getDate() + parseInt(days));
+
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .update({
+      trial_ends_at: base.toISOString(),
+      plan: 'trial',
+      status: 'active',
+    })
+    .eq('id', subscription_id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, new_trial_ends_at: data.trial_ends_at });
+});
+
+// POST /api/admin/grant-free
+router.post('/grant-free', adminAuth, async (req, res) => {
+  const { subscription_id } = req.body;
+  if (!subscription_id) return res.status(400).json({ error: 'subscription_id required' });
+
+  const supabase = getAdminClient();
+
+  // Set trial end 10 years from now = effectively free forever
+  const freeUntil = new Date();
+  freeUntil.setFullYear(freeUntil.getFullYear() + 10);
+
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .update({
+      trial_ends_at: freeUntil.toISOString(),
+      plan: 'trial',
+      status: 'active',
+    })
+    .eq('id', subscription_id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true, message: 'Free access granted for 10 years' });
+});
+
+// POST /api/admin/revoke-access
+router.post('/revoke-access', adminAuth, async (req, res) => {
+  const { subscription_id } = req.body;
+  if (!subscription_id) return res.status(400).json({ error: 'subscription_id required' });
+
+  const supabase = getAdminClient();
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update({ status: 'expired' })
+    .eq('id', subscription_id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 });
 
 module.exports = router;
