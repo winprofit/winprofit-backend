@@ -9,12 +9,15 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping backend
+      - name: Ping backend health
         run: |
-          curl -f https://winprofit-backend-production.up.railway.app/health
-          echo "Backend pinged successfully"
-      
-      - name: Ping Supabase
+          curl -f https://winprofit-backend-production.up.railway.app/health || echo "Backend offline"
+          echo "Backend pinged"
+
+      - name: Ping Supabase directly
         run: |
-          curl -f https://winprofit-backend-production.up.railway.app/health
-          echo "Keep alive done"
+          curl -f \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/restaurants?select=id&limit=1" || echo "Supabase ping failed"
+          echo "Supabase pinged"
